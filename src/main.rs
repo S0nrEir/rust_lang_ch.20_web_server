@@ -1,35 +1,77 @@
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 //读写流所需的特定trait
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::fs;
+use std::net::TcpStream;
+use std::thread;
+use std::time::Duration;
+use hello::ThreadPool;
+
+static HELLO_HTML_PATH:&str = "html/hello.html";
+static NOT_FOUND_HTML_PATH:&str = "html/404.html";
+static STATUS_LINE_200:&str = "HTTP/1.1 200 OK";
+static STATUS_LINE_404:&str = "HTTP/1.1 404 NOT FOUND";
 
 fn main() {
     //在127.0.0.1:7878上监听tcp流
-    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-
-    for stream in listener.incoming() {
-        //当客户端和服务器发生连接，获取其流，依次处理每个连接
-        let stream = stream.unwrap();
-        handle_connection(stream);
-    }
+    // let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    // for stream in listener.incoming() {
+    //     //当客户端和服务器发生连接，获取其流，依次处理每个连接
+    //     let stream = stream.unwrap();
+    //     handle_connection(stream);
     
+    //     //handle_connection_simulate_delay(stream);
+    // }
+
+    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    let pool = ThreadPool::new(4);
+    for stream in listener.incoming(){
+        let stream = stream.unwrap();
+        pool.execute(||handle_connection_simulate_delay(stream));
+    }
 }
-fn handle_connection(mut stream: TcpStream) {
+
+///模拟慢速处理
+/// 
+/// #stream:tcp流
+fn handle_connection_simulate_delay(mut stream:TcpStream){
     let buf_reader = BufReader::new(&mut stream);
     let request_line = buf_reader.lines().next().unwrap().unwrap();
-    let (status_line, filename) = if request_line == "GET / HTTP/1.1" {
-        ("HTTP/1.1 200 OK", "hello.html")
-    } else {
-        ("HTTP/1.1 404 NOT FOUND", "404.html")
-    };
 
+    //模拟慢五秒处理下一个连接
+    let (status_line, filename) = match &request_line[..] {
+
+        "GET / HTTP/1.1" => (STATUS_LINE_200, HELLO_HTML_PATH),
+        "GET /sleep HTTP/1.1" => {
+            thread::sleep(Duration::from_secs(10));
+            (STATUS_LINE_200, HELLO_HTML_PATH)
+        }
+        _ => (STATUS_LINE_404, NOT_FOUND_HTML_PATH),
+
+    };
+    
     let contents = fs::read_to_string(filename).unwrap();
     let length = contents.len();
     let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
-
     stream.write_all(response.as_bytes()).unwrap();
 }
+
+// fn handle_connection(mut stream: TcpStream) {
+//     let buf_reader = BufReader::new(&mut stream);
+//     let request_line = buf_reader.lines().next().unwrap().unwrap();
+//     let (status_line, filename) = if request_line == "GET / HTTP/1.1" {
+//         ("HTTP/1.1 200 OK", "html/hello.html")
+//     } else {
+//         ("HTTP/1.1 404 NOT FOUND", "html/404.html")
+//     };
+
+//     let contents = fs::read_to_string(filename).unwrap();
+//     let length = contents.len();
+//     let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
+
+//     stream.write_all(response.as_bytes()).unwrap();
+// }
 
 // fn handle_connection(mut stream:TcpStream){
 //     let buf_reader = BufReader::new(&mut stream);
