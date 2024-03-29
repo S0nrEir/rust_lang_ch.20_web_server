@@ -66,7 +66,7 @@ fn handle_connection(mut stream: TcpStream) {
 //         .take_while(|line|!line.is_empty())
 //         //生成集合返回
 //         .collect();
-    
+
 //     //使用 HTTP 1.1 版本的响应，态码为 200，原因短语为 OK，没有 header，也没有 body
 //     let status_line = "HTTP/1.1 200 OK";
 //     let content = fs::read_to_string("hello.html").unwrap();
