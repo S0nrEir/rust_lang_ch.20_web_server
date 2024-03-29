@@ -78,31 +78,34 @@ impl Worker {
         println!("Worker {} created.",id);
         let thread = thread::spawn(move || {
 
+            //当先传入一个阻塞线程的job，然后传入一个立即执行的job，第一种情况会并行处理job，而第二种情况不会，这是为什么？
+            //示例 20-20 中的代码使用的 let job = receiver.lock().unwrap().recv().unwrap(); 
+            //之所以可以工作是因为对于 let 来说，当 let 语句结束时任何表达式中等号右侧使用的临时值都会立即被丢弃。
+            //然而 while let（if let 和 match）直到相关的代码块结束都不会丢弃临时值。
+            //在示例 20-21 中，job() 调用期间锁一直持续，这也意味着其他的 worker 无法接受任务。
+
             loop {
                 //阻塞线程，直到有job可用
                 //如果没有可用的job，线程将一直停留在这里，直到有job可用。
                 
                 println!("Worker {} waiting for a job.",id);
-                // let job = receiver.lock().unwrap().recv().unwrap();
-                // println!("Worker {} got a job; executing.",id);
-                // job();
-                // println!("Worker {} finish a job.",id);
-
-                //解包接收方，拿到job，一直循环接受任务
-                //当被创建时，接收方就一直尝试解包调用线程任务
+                let job = receiver.lock().unwrap().recv().unwrap();
+                println!("Worker {} got a job; executing.",id);
+                job();
+                println!("Worker {} finish a job.",id);
 
                 //不阻塞线程，如果拿不到job，就立即执行下一次循环
-                if  let Ok(result) = receiver.lock(){
-                    if let Ok(job) = result.recv(){
-                        println!("Worker {} got a job; executing.",id);
-                        job();
-                        println!("Worker {} finish a job.",id);
-                    }else {
-                        println!("Worker {} faild to get job.",id);
-                    }
-                }else {
-                    println!("Worker {} faild to get result.",id);
-                }
+                // if  let Ok(result) = receiver.lock(){
+                //     if let Ok(job) = result.recv(){
+                //         println!("Worker {} got a job; executing.",id);
+                //         job();
+                //         println!("Worker {} finish a job.",id);
+                //     }else {
+                //         println!("Worker {} faild to get job.",id);
+                //     }
+                // }else {
+                //     println!("Worker {} faild to get result.",id);
+                // }
             }
         });
 
