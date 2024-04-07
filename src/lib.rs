@@ -1,3 +1,4 @@
+use std::process::id;
 use std::result;
 use std::thread;
 use std::sync::atomic::AtomicUsize;
@@ -5,6 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::Mutex;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 
 //id池被多个线程访问，考虑数据竞争的问题，使用原子操作
 ///线程id池
@@ -22,7 +24,8 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 /// #panic:没有足够的系统资源
 pub struct ThreadPool{
     _workers : Vec<Worker>,
-    _sender : mpsc::Sender<Job>,
+    _sender: Option<mpsc::Sender<Job>>
+    // _sender : mpsc::Sender<Job>,
 }
 
 ///线程管理类，每一个实例对应一个thread
@@ -33,9 +36,29 @@ pub struct ThreadPool{
 /// #_thread:线程句柄
 struct Worker{
     _id:usize,
-    _thread:thread::JoinHandle<()>,
+    _thread:Option<JoinHandle<()>>,
+    // _thread:thread::JoinHandle<()>,
     // _receiver:mpsc::Receiver<Job>,
     // _receiver:Arc<Mutex<mpsc::Receiver<Job>>>,
+}
+
+impl Drop for ThreadPool{
+    fn drop(&mut self){
+        //在join worker之前显式丢弃掉sender(发送者)
+        //这会关闭信道，表明不会有更多消息被发送，这样所有等待的recv都会返回Err
+        drop(self._sender.take());
+        //当线程池被丢弃时，join等待其调用完成
+        for worker in &mut self._workers{
+            println!("shutting down worker:{}",worker._id);
+            //这里并不能调用 join，因为只有每一个 worker 的可变借用，而 join()需要获取其参数的所有权
+            //为了解决这个问题 需要将 thread 移动出拥有其所有权的 Worker 实例以便 join 可以消费这个线程
+            //比如Option.take
+            // worker._thread.join().unwrap();
+            if let Some(handler) = worker._thread.take(){
+                handler.join().unwrap();
+            }
+        }
+    }
 }
 
 impl ThreadPool {
@@ -54,7 +77,7 @@ impl ThreadPool {
         
         return ThreadPool{
             _workers:workers,
-            _sender:sender,
+            _sender:Some(sender),
         };
     }
 
@@ -68,14 +91,16 @@ impl ThreadPool {
     {
         let job = Box::new(f);
         //通过信道发送方将job传给接收方来执行线程任务
-        self._sender.send(job).unwrap();
+        // self._sender.send(job).unwrap();
+        if let Some(sender_ref) = self._sender.as_ref(){
+            sender_ref.send(job).unwrap();
+        }
     }
 }
 
 impl Worker {
     pub fn new(receiver:Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker{
         let id = Self::gen_id();
-        println!("Worker {} created.",id);
         let thread = thread::spawn(move || {
 
             //当先传入一个阻塞线程的job，然后传入一个立即执行的job，第一种情况会并行处理job，而第二种情况不会，这是为什么？
@@ -87,12 +112,20 @@ impl Worker {
             loop {
                 //阻塞线程，直到有job可用
                 //如果没有可用的job，线程将一直停留在这里，直到有job可用。
-                
-                println!("Worker {} waiting for a job.",id);
-                let job = receiver.lock().unwrap().recv().unwrap();
-                println!("Worker {} got a job; executing.",id);
-                job();
-                println!("Worker {} finish a job.",id);
+                let msg = receiver.lock().unwrap().recv();
+                match msg {
+                    Ok(job) => {
+                        println!("worker {} got a job!",id);
+                        job();
+                    },
+                    //如果中断直接退出循环，不再等待消息
+                    _ => {
+                        println!("worker {} disconnected,shutting down",id);
+                        break;
+                    },
+                }
+                // let job = receiver.lock().unwrap().recv().unwrap();
+                // job();
 
                 //不阻塞线程，如果拿不到job，就立即执行下一次循环
                 // if  let Ok(result) = receiver.lock(){
@@ -111,7 +144,7 @@ impl Worker {
 
         return Worker{
             _id:id,
-            _thread:thread,
+            _thread:Some(thread),
         };
     }
 
