@@ -55,7 +55,9 @@ impl Drop for ThreadPool{
             //比如Option.take
             // worker._thread.join().unwrap();
             if let Some(handler) = worker._thread.take(){
-                handler.join().unwrap();
+                if let Err(e) = handler.join(){
+                    println!("worker {} join failed: {:?}",worker._id,e);
+                }
             }
         }
     }
@@ -93,7 +95,10 @@ impl ThreadPool {
         //通过信道发送方将job传给接收方来执行线程任务
         // self._sender.send(job).unwrap();
         if let Some(sender_ref) = self._sender.as_ref(){
-            sender_ref.send(job).unwrap();
+            if let Err(e) = sender_ref.send(job){
+                println!("ThreadPool execute failed: {:?}",e);
+            }
+            // sender_ref.send(job).unwrap();
         }
     }
 }
