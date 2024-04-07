@@ -6,7 +6,7 @@ use std::fs;
 use std::net::TcpStream;
 use std::thread;
 use std::time::Duration;
-use hello::ThreadPool;
+use hello_rust_lang_book_chpater_20::ThreadPool;
 
 static HELLO_HTML_PATH:&str = "html/hello.html";
 static NOT_FOUND_HTML_PATH:&str = "html/404.html";

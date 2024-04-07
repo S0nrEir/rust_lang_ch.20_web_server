@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "hello"
+name = "hello_rust_lang_book_chpater_20"
 version = "1.0.0"
